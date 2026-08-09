@@ -1,0 +1,21 @@
+node_modules/
+dist/
+
+# SQLite database (user-specific, not shared via git)
+maven-db/
+*.db
+*.db-wal
+*.db-shm
+
+# Logs
+*.log
+
+# Editor
+.vscode/
+.idea/
+.DS_Store
+*.sw?
+
+# Environment
+.env
+*.local

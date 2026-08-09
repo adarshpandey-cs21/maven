@@ -1,0 +1,156 @@
+# maven-mcp
+
+MCP server that learns coding conventions from PR review comments and enforces them.
+
+- Learn conventions from Bitbucket PR comments and tasks
+- Store rules in a local SQLite database
+- Validate diffs against rules
+- Team shares the DB — extract once, everyone benefits
+
+## Install
+
+```bash
+npm install -g maven-mcp
+```
+
+Or use directly with npx:
+
+```bash
+npx maven-mcp
+```
+
+## Setup
+
+Add to your Claude Code config (`~/.claude.json` under `mcpServers`):
+
+```json
+{
+  "maven-mcp": {
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "maven-mcp"]
+  }
+}
+```
+
+Or if installed locally:
+
+```json
+{
+  "maven-mcp": {
+    "type": "stdio",
+    "command": "node",
+    "args": ["/path/to/maven-mcp/dist/mcp/index.js"]
+  }
+}
+```
+
+## Tools
+
+| Tool | What it does |
+|------|-------------|
+| `learn` | Takes PR comments, filters blocked users, returns all comments for Claude to extract conventions |
+| `get_rules` | Returns rules for a repo — filter by category, source, compact/detailed view |
+| `save_rule` | Add/update/disable rules — supports batch save (multiple rules in one call) |
+| `validate_diff` | Check a diff against rules, return violations, increment violation counter |
+| `manage_reviewers` | Set reviewer tiers: lead (3x), senior (2x), blocked (ignored) |
+
+## Usage
+
+### 1. Block bots (one-time)
+
+```
+Block sonarqube-bot in maven-mcp, it's a bot
+```
+
+### 2. Set trusted reviewers (one-time)
+
+```
+Add john.smith as lead in maven-mcp
+```
+
+### 3. Learn from PRs
+
+```
+Fetch all comments and tasks from PR #142 in backend-api (project PROJ)
+and learn conventions from them using maven-mcp
+```
+
+Claude will:
+1. Fetch comments + tasks from Bitbucket (with `include_tasks=true`)
+2. Pass them to `learn` — blocked users filtered out
+3. Read all comments and propose a numbered list of rules
+4. Wait for you to pick: `"save all"`, `"save 1,3,5"`, `"save all except 2"`
+5. Batch-save your picks
+
+### 4. Validate a PR
+
+```
+Review PR #205 against maven-mcp rules
+```
+
+### 5. View stored rules
+
+```
+Show me all rules for backend-api in detail
+Show only typescript rules for backend-api
+Show my manual rules for backend-api
+```
+
+Or query SQLite directly:
+
+```bash
+sqlite3 maven-db/maven.db "SELECT * FROM rules;"
+```
+
+## Schema
+
+```sql
+rules (
+  id, repo, category, severity, rule, match, fix,
+  confidence, violations, source, status, created_at, updated_at
+)
+
+reviewers (
+  username, tier, created_at
+)
+```
+
+**Rules fields:**
+- `category` — typescript, svelte, general, css, etc.
+- `severity` — nit, suggestion, important, critical
+- `source` — `manual` (you added it) or `learned` (from PR comments)
+- `violations` — counter incremented each time `validate_diff` catches a hit
+- `match` — optional regex for auto-detection in diffs
+- `fix` — optional fix hint shown with violations
+
+**Reviewer tiers:**
+- `lead` — 3x weight in scoring
+- `senior` — 2x weight
+- `blocked` — comments ignored during learn
+- Everyone else — peer, 1x weight (no entry needed)
+
+## How rules look to Claude
+
+Plain text, zero overhead:
+
+```
+[backend-api / typescript / critical]
+- Always handle default case in switch
+- Use Result<T,E> pattern, never throw from service functions
+
+[backend-api / general / important]
+- PR must have ticket ID in title
+- Clear naming — function names must match what they return
+```
+
+## Environment
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MAVEN_DB_PATH` | `<project>/maven-db/maven.db` | Override database location |
+| `MAVEN_DEBUG` | unset | Set to enable debug logging |
+
+## License
+
+MIT

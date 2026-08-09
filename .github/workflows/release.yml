@@ -1,0 +1,130 @@
+name: Release and Publish
+
+on:
+  push:
+    branches: [release]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: npm
+
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Determine version bump
+        id: version-type
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=format:"%s")
+          COMMIT_BODY=$(git log -1 --pretty=format:"%b")
+          echo "Latest commit: $COMMIT_MSG"
+
+          HAS_BREAKING=false
+          if echo "$COMMIT_BODY" | grep -iE "^BREAKING CHANGE:" > /dev/null; then
+            HAS_BREAKING=true
+          fi
+
+          if echo "$COMMIT_MSG" | grep -iE "^feat(\(.+\))?!?:" > /dev/null; then
+            if echo "$COMMIT_MSG" | grep -E "feat(\(.+\))?!:" > /dev/null || [ "$HAS_BREAKING" = true ]; then
+              echo "version_type=major" >> $GITHUB_OUTPUT
+            else
+              echo "version_type=minor" >> $GITHUB_OUTPUT
+            fi
+          elif echo "$COMMIT_MSG" | grep -iE "^fix(\(.+\))?!?:" > /dev/null; then
+            if echo "$COMMIT_MSG" | grep -E "fix(\(.+\))?!:" > /dev/null || [ "$HAS_BREAKING" = true ]; then
+              echo "version_type=major" >> $GITHUB_OUTPUT
+            else
+              echo "version_type=patch" >> $GITHUB_OUTPUT
+            fi
+          else
+            if [ "$HAS_BREAKING" = true ]; then
+              echo "version_type=major" >> $GITHUB_OUTPUT
+            else
+              echo "version_type=patch" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        id: version-bump
+        run: |
+          CURRENT=$(node -p "require('./package.json').version")
+          echo "Current: $CURRENT"
+
+          NEW=$(npm version ${{ steps.version-type.outputs.version_type }} --no-git-tag-version)
+          NEW=$(echo $NEW | sed 's/^v//')
+          echo "New: $NEW"
+          echo "new_version=$NEW" >> $GITHUB_OUTPUT
+
+      - name: Commit, tag, and push
+        run: |
+          VERSION="${{ steps.version-bump.outputs.new_version }}"
+          git add package.json package-lock.json
+          git commit -m "chore(release): ${VERSION}"
+
+          git tag -a "${VERSION}" -m "Release ${VERSION}"
+
+          git push origin release
+          git push origin "${VERSION}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version-bump.outputs.new_version }}
+          name: Release ${{ steps.version-bump.outputs.new_version }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to NPM
+        run: |
+          PACKAGE=$(node -p "require('./package.json').name")
+          VERSION="${{ steps.version-bump.outputs.new_version }}"
+
+          echo "Checking if $PACKAGE@$VERSION exists..."
+          if npm view "$PACKAGE@$VERSION" version 2>/dev/null; then
+            echo "Already published, skipping"
+            exit 0
+          fi
+
+          echo "Publishing $PACKAGE@$VERSION..."
+          npm publish --access public
+          echo "Published successfully"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "Publish failed, rolling back..."
+          git checkout -- package.json package-lock.json

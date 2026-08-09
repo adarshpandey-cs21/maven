@@ -1,0 +1,55 @@
+{
+  "name": "maven-mcp",
+  "version": "0.1.0",
+  "description": "MCP server that learns coding conventions from PR review comments and enforces them",
+  "type": "module",
+  "main": "dist/mcp/index.js",
+  "bin": {
+    "maven-mcp": "dist/mcp/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "code-review",
+    "conventions",
+    "linting",
+    "bitbucket",
+    "pull-request",
+    "claude",
+    "ai"
+  ],
+  "author": "Adarsh Pandey",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adarshpandey-cs21/maven.git"
+  },
+  "bugs": {
+    "url": "https://github.com/adarshpandey-cs21/maven/issues"
+  },
+  "homepage": "https://github.com/adarshpandey-cs21/maven#readme",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/mcp/index.js",
+    "dev": "tsc --watch",
+    "lint": "biome check src/",
+    "lint:fix": "biome check --write src/",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "better-sqlite3": "^11.0.0",
+    "nanoid": "^5.1.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.0",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}
