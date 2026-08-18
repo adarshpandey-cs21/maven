@@ -1,0 +1,7 @@
+# pnpm does not run dependency install scripts unless they are approved here.
+# better-sqlite3 compiles its native binding in one, and biome downloads its
+# platform binary in one. Without these entries the install looks fine but the
+# server crashes on startup and biome cannot run.
+allowBuilds:
+  better-sqlite3: true
+  '@biomejs/biome': true

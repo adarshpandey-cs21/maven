@@ -1,12 +1,10 @@
 import { existsSync, mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import Database from 'better-sqlite3';
 import { logger } from './logger.js';
 
-// Resolve against the working directory, not the install location — when run via
-// npx or a global install the package lives in the npm cache, which is the wrong
-// place (and often read-only) for a team's shared database.
-const DEFAULT_DB_PATH = resolve(process.cwd(), 'maven-db', 'maven.db');
+const DEFAULT_DB_PATH = resolve(homedir(), '.maven-mcp', 'maven.db');
 
 let db: Database.Database | null = null;
 

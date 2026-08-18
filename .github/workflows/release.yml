@@ -20,31 +20,39 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
+      # No version input: action-setup reads packageManager from package.json,
+      # so the version is pinned in exactly one place.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
 
-      # npm trusted publishing (OIDC) needs npm CLI >= 11.5.1; Node 22 ships npm 10.x.
-      - name: Upgrade npm for trusted publishing
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false # never cache in release builds
+
+      # Trusted publishing needs npm >= 11.5.1 and Node >= 22.14.0. Node 24 ships
+      # npm 11.x, but pin the floor explicitly rather than trust the bundled minor.
+      - name: Ensure npm supports trusted publishing
         run: |
           npm install -g npm@latest
+          node --version
           npm --version
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: npm run lint
+        run: pnpm lint
 
       - name: Build
-        run: npm run build
+        run: pnpm build
 
       - name: Verify build artifacts
         run: |
@@ -112,7 +120,7 @@ jobs:
           CURRENT=$(node -p "require('./package.json').version")
           echo "Current: $CURRENT"
 
-          NEW=$(npm version ${{ steps.version-type.outputs.version_type }} --no-git-tag-version)
+          NEW=$(pnpm version ${{ steps.version-type.outputs.version_type }} --no-git-tag-version)
           NEW=$(echo $NEW | sed 's/^v//')
           echo "New: $NEW"
           echo "new_version=$NEW" >> $GITHUB_OUTPUT
@@ -130,6 +138,9 @@ jobs:
             exit 0
           fi
 
+          # Deliberately the npm CLI, not pnpm: npm owns the OIDC token exchange,
+          # and pnpm has regressed on it before (pnpm/pnpm#11513). pnpm still does
+          # the install and build above.
           echo "Publishing $PACKAGE@$VERSION via trusted publishing (OIDC)..."
           npm publish --access public
           echo "Published $PACKAGE@$VERSION"
@@ -139,7 +150,7 @@ jobs:
         run: |
           VERSION="${{ steps.version-bump.outputs.new_version }}"
 
-          git add package.json package-lock.json
+          git add package.json pnpm-lock.yaml
           git commit -m "chore(release): ${VERSION}"
 
           git fetch origin release

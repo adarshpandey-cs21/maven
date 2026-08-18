@@ -1,8 +1,9 @@
 {
-  "name": "@adarshpandey/maven",
+  "name": "@adarsh-pandey/maven",
   "version": "0.1.0",
   "description": "MCP server that learns coding conventions from PR review comments and enforces them",
   "type": "module",
+  "packageManager": "pnpm@11.22.0",
   "main": "dist/mcp/index.js",
   "types": "dist/mcp/index.d.ts",
   "exports": {

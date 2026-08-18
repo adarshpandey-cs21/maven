@@ -12,25 +12,82 @@ jobs:
 
     strategy:
       matrix:
-        node-version: ['20', '22']
+        # pnpm 11 requires Node >= 22.13, so it cannot build on Node 20.
+        # Node 20 support is covered by the consumer-install job below.
+        node-version: ['22', '24']
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+
+      # No version input: action-setup reads packageManager from package.json,
+      # so the version is pinned in exactly one place.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
 
       - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: npm run lint
+        run: pnpm lint
 
       - name: Build
-        run: npm run build
+        run: pnpm build
 
       - name: Verify package contents
-        run: npm pack --dry-run
+        run: npm pack --dry-run # npm packs what npm publishes
+
+  # package.json declares engines.node >=20, but the job above cannot test that
+  # because pnpm itself needs 22.13+. Install the real tarball with npm instead
+  # and boot the server, so the supported floor is actually exercised.
+  consumer-install:
+    runs-on: ubuntu-latest
+    needs: build
+
+    strategy:
+      matrix:
+        node-version: ['20', '24']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js 24 to build
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Build and pack
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          npm pack --pack-destination /tmp
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install the tarball and start the server
+        run: |
+          mkdir -p /tmp/consumer && cd /tmp/consumer
+          npm init -y > /dev/null
+          npm install /tmp/adarsh-pandey-maven-*.tgz
+
+          echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' \
+            | ./node_modules/.bin/maven-mcp > out.json 2>err.log || true
+
+          if ! grep -q '"serverInfo"' out.json; then
+            echo "server did not respond on Node ${{ matrix.node-version }}"
+            cat err.log
+            exit 1
+          fi
+          echo "OK on Node ${{ matrix.node-version }}"

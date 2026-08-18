@@ -1,6 +1,6 @@
-# @adarshpandey/maven
+# @adarsh-pandey/maven
 
-[![npm version](https://img.shields.io/npm/v/@adarshpandey/maven.svg)](https://www.npmjs.com/package/@adarshpandey/maven)
+[![npm version](https://img.shields.io/npm/v/@adarsh-pandey/maven.svg)](https://www.npmjs.com/package/@adarsh-pandey/maven)
 [![CI](https://github.com/adarshpandey-cs21/maven/actions/workflows/ci.yml/badge.svg)](https://github.com/adarshpandey-cs21/maven/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
@@ -9,18 +9,18 @@ MCP server that learns coding conventions from PR review comments and enforces t
 - Learn conventions from Bitbucket PR comments and tasks
 - Store rules in a local SQLite database
 - Validate diffs against rules
-- Team shares the DB — extract once, everyone benefits
+- One database per machine, keyed by repo — share it and the whole team benefits
 
 ## Install
 
 ```bash
-npm install -g @adarshpandey/maven
+npm install -g @adarsh-pandey/maven
 ```
 
 Or use directly with npx — no install needed:
 
 ```bash
-npx -y @adarshpandey/maven
+npx -y @adarsh-pandey/maven      # or: pnpm dlx @adarsh-pandey/maven
 ```
 
 Requires Node.js 20 or newer.
@@ -34,7 +34,7 @@ Add to your Claude Code config (`~/.claude.json` under `mcpServers`):
   "maven-mcp": {
     "type": "stdio",
     "command": "npx",
-    "args": ["-y", "@adarshpandey/maven"]
+    "args": ["-y", "@adarsh-pandey/maven"]
   }
 }
 ```
@@ -105,8 +105,49 @@ Show my manual rules for backend-api
 Or query SQLite directly:
 
 ```bash
-sqlite3 maven-db/maven.db "SELECT * FROM rules;"
+sqlite3 ~/.maven-mcp/maven.db "SELECT * FROM rules;"
 ```
+
+## Where rules are stored
+
+One database for everything, at `~/.maven-mcp/maven.db`. Rules carry a `repo`
+column, so a single file holds the conventions for every repository you work on —
+there is no per-project database to keep track of, and nothing to commit.
+
+Point `MAVEN_DB_PATH` at a different absolute path to override it.
+
+## Sharing rules with your team
+
+The database is a plain SQLite file, so sharing it is a file copy. Export with
+`VACUUM INTO` rather than `cp` — a plain copy can miss recent writes still sitting
+in the write-ahead log:
+
+```bash
+rm -f /tmp/team-rules.db   # VACUUM INTO refuses to overwrite an existing file
+sqlite3 ~/.maven-mcp/maven.db "VACUUM INTO '/tmp/team-rules.db'"
+```
+
+Send that file to a teammate. They can either drop it in as their database:
+
+```bash
+mkdir -p ~/.maven-mcp && cp team-rules.db ~/.maven-mcp/maven.db
+```
+
+or keep their own and point at yours for a single project:
+
+```json
+{
+  "maven-mcp": {
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "@adarsh-pandey/maven"],
+    "env": { "MAVEN_DB_PATH": "/abs/path/to/team-rules.db" }
+  }
+}
+```
+
+Rules and reviewer tiers carry across as-is — nothing in the schema is tied to a
+machine or a user.
 
 ## Schema
 
@@ -153,20 +194,42 @@ Plain text, zero overhead:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MAVEN_DB_PATH` | `<cwd>/maven-db/maven.db` | Override database location. Set this to an absolute path so the DB does not move with your shell's working directory. |
+| `MAVEN_DB_PATH` | `~/.maven-mcp/maven.db` | Override database location. Use an absolute path. |
 | `MAVEN_DEBUG` | unset | Set to enable debug logging |
 
 ## Contributing
 
 Issues and PRs welcome at [adarshpandey-cs21/maven](https://github.com/adarshpandey-cs21/maven).
 
+This project uses [pnpm](https://pnpm.io), **version 10 or newer**. The exact
+version is pinned in the `packageManager` field, and pnpm 10+ reads that field and
+switches itself to the pinned version automatically — so any recent pnpm will do:
+
 ```bash
 git clone https://github.com/adarshpandey-cs21/maven.git
 cd maven
-npm install
-npm run build
-npm run lint
+pnpm install
+pnpm build
+pnpm lint
 ```
+
+pnpm 9 and older will not work: they ignore both `packageManager` and the
+`allowBuilds` setting below, and will silently produce a broken install.
+
+`better-sqlite3` and `biome` both run install scripts, which pnpm blocks by
+default. They are approved in `pnpm-workspace.yaml`:
+
+```yaml
+allowBuilds:
+  better-sqlite3: true
+  '@biomejs/biome': true
+```
+
+That file is required even though this is not a monorepo — pnpm 11 moved its
+settings out of `package.json` into `pnpm-workspace.yaml`, and an `allowBuilds`
+block in `package.json` is silently ignored. Skipping it leaves `better-sqlite3`
+without its native binding and the server crashes on startup with
+`Could not locate the bindings file`.
 
 Releases are automated: merge into the `release` branch and the
 [release workflow](.github/workflows/release.yml) bumps the version from the
