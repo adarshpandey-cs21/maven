@@ -4,6 +4,10 @@ on:
   push:
     branches: [release]
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -27,6 +31,12 @@ jobs:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
+      # npm trusted publishing (OIDC) needs npm CLI >= 11.5.1; Node 22 ships npm 10.x.
+      - name: Upgrade npm for trusted publishing
+        run: |
+          npm install -g npm@latest
+          npm --version
+
       - name: Install dependencies
         run: npm ci
 
@@ -35,6 +45,16 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Verify build artifacts
+        run: |
+          if [ ! -f dist/mcp/index.js ]; then
+            echo "dist/mcp/index.js missing after build"
+            ls -la
+            exit 1
+          fi
+          echo "Files in dist: $(find dist -type f | wc -l)"
+          find dist -type f | head -20
 
       - name: Determine version bump
         id: version-type
@@ -49,13 +69,13 @@ jobs:
           fi
 
           if echo "$COMMIT_MSG" | grep -iE "^feat(\(.+\))?!?:" > /dev/null; then
-            if echo "$COMMIT_MSG" | grep -E "feat(\(.+\))?!:" > /dev/null || [ "$HAS_BREAKING" = true ]; then
+            if echo "$COMMIT_MSG" | grep -E "^feat(\(.+\))?!:" > /dev/null || [ "$HAS_BREAKING" = true ]; then
               echo "version_type=major" >> $GITHUB_OUTPUT
             else
               echo "version_type=minor" >> $GITHUB_OUTPUT
             fi
           elif echo "$COMMIT_MSG" | grep -iE "^fix(\(.+\))?!?:" > /dev/null; then
-            if echo "$COMMIT_MSG" | grep -E "fix(\(.+\))?!:" > /dev/null || [ "$HAS_BREAKING" = true ]; then
+            if echo "$COMMIT_MSG" | grep -E "^fix(\(.+\))?!:" > /dev/null || [ "$HAS_BREAKING" = true ]; then
               echo "version_type=major" >> $GITHUB_OUTPUT
             else
               echo "version_type=patch" >> $GITHUB_OUTPUT
@@ -68,13 +88,26 @@ jobs:
             fi
           fi
 
+      - name: Skip release for version bump commits
+        id: guard
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=format:"%s")
+          if echo "$COMMIT_MSG" | grep -qE "^chore\(release\): "; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "Release commit detected, nothing to do"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Configure Git
+        if: steps.guard.outputs.skip == 'false'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Bump version
         id: version-bump
+        if: steps.guard.outputs.skip == 'false'
         run: |
           CURRENT=$(node -p "require('./package.json').version")
           echo "Current: $CURRENT"
@@ -84,47 +117,49 @@ jobs:
           echo "New: $NEW"
           echo "new_version=$NEW" >> $GITHUB_OUTPUT
 
-      - name: Commit, tag, and push
-        run: |
-          VERSION="${{ steps.version-bump.outputs.new_version }}"
-          git add package.json package-lock.json
-          git commit -m "chore(release): ${VERSION}"
-
-          git tag -a "${VERSION}" -m "Release ${VERSION}"
-
-          git push origin release
-          git push origin "${VERSION}"
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version-bump.outputs.new_version }}
-          name: Release ${{ steps.version-bump.outputs.new_version }}
-          generate_release_notes: true
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+      # Publish before tagging: a failed publish must not leave an orphan tag or release.
       - name: Publish to NPM
+        if: steps.guard.outputs.skip == 'false'
         run: |
           PACKAGE=$(node -p "require('./package.json').name")
           VERSION="${{ steps.version-bump.outputs.new_version }}"
 
           echo "Checking if $PACKAGE@$VERSION exists..."
-          if npm view "$PACKAGE@$VERSION" version 2>/dev/null; then
-            echo "Already published, skipping"
+          if npm view "$PACKAGE@$VERSION" version > /dev/null 2>&1; then
+            echo "$PACKAGE@$VERSION already published, skipping"
             exit 0
           fi
 
-          echo "Publishing $PACKAGE@$VERSION..."
+          echo "Publishing $PACKAGE@$VERSION via trusted publishing (OIDC)..."
           npm publish --access public
-          echo "Published successfully"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          echo "Published $PACKAGE@$VERSION"
 
-      - name: Rollback on failure
-        if: failure()
+      - name: Commit, tag, and push
+        if: steps.guard.outputs.skip == 'false'
         run: |
-          echo "Publish failed, rolling back..."
-          git checkout -- package.json package-lock.json
+          VERSION="${{ steps.version-bump.outputs.new_version }}"
+
+          git add package.json package-lock.json
+          git commit -m "chore(release): ${VERSION}"
+
+          git fetch origin release
+          if [ "$(git rev-list --count HEAD..origin/release)" -gt 0 ]; then
+            echo "Behind remote, rebasing..."
+            git rebase origin/release
+          fi
+          git push origin HEAD:release
+
+          git tag -a "v${VERSION}" -m "Release v${VERSION}"
+          git push origin "v${VERSION}"
+
+      - name: Create GitHub Release
+        if: steps.guard.outputs.skip == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version-bump.outputs.new_version }}
+          name: Release v${{ steps.version-bump.outputs.new_version }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

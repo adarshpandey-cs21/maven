@@ -1,19 +1,30 @@
 {
-  "name": "maven-mcp",
+  "name": "@adarshpandey/maven",
   "version": "0.1.0",
   "description": "MCP server that learns coding conventions from PR review comments and enforces them",
   "type": "module",
   "main": "dist/mcp/index.js",
+  "types": "dist/mcp/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/mcp/index.d.ts",
+      "import": "./dist/mcp/index.js"
+    }
+  },
   "bin": {
     "maven-mcp": "dist/mcp/index.js"
   },
   "files": [
     "dist",
-    "README.md"
+    "!dist/**/*.test.*",
+    "!dist/**/*.spec.*",
+    "README.md",
+    "LICENSE"
   ],
   "keywords": [
     "mcp",
     "model-context-protocol",
+    "mcp-server",
     "code-review",
     "conventions",
     "linting",
@@ -32,6 +43,12 @@
     "url": "https://github.com/adarshpandey-cs21/maven/issues"
   },
   "homepage": "https://github.com/adarshpandey-cs21/maven#readme",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/mcp/index.js",
@@ -42,13 +59,13 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "better-sqlite3": "^11.0.0",
+    "better-sqlite3": "^12.11.1",
     "nanoid": "^5.1.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",
-    "@types/better-sqlite3": "^7.6.12",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0"
   }

@@ -1,4 +1,8 @@
-# maven-mcp
+# @adarshpandey/maven
+
+[![npm version](https://img.shields.io/npm/v/@adarshpandey/maven.svg)](https://www.npmjs.com/package/@adarshpandey/maven)
+[![CI](https://github.com/adarshpandey-cs21/maven/actions/workflows/ci.yml/badge.svg)](https://github.com/adarshpandey-cs21/maven/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 MCP server that learns coding conventions from PR review comments and enforces them.
 
@@ -10,14 +14,16 @@ MCP server that learns coding conventions from PR review comments and enforces t
 ## Install
 
 ```bash
-npm install -g maven-mcp
+npm install -g @adarshpandey/maven
 ```
 
-Or use directly with npx:
+Or use directly with npx — no install needed:
 
 ```bash
-npx maven-mcp
+npx -y @adarshpandey/maven
 ```
+
+Requires Node.js 20 or newer.
 
 ## Setup
 
@@ -28,19 +34,18 @@ Add to your Claude Code config (`~/.claude.json` under `mcpServers`):
   "maven-mcp": {
     "type": "stdio",
     "command": "npx",
-    "args": ["-y", "maven-mcp"]
+    "args": ["-y", "@adarshpandey/maven"]
   }
 }
 ```
 
-Or if installed locally:
+Or if installed globally (the package exposes a `maven-mcp` binary):
 
 ```json
 {
   "maven-mcp": {
     "type": "stdio",
-    "command": "node",
-    "args": ["/path/to/maven-mcp/dist/mcp/index.js"]
+    "command": "maven-mcp"
   }
 }
 ```
@@ -148,9 +153,26 @@ Plain text, zero overhead:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MAVEN_DB_PATH` | `<project>/maven-db/maven.db` | Override database location |
+| `MAVEN_DB_PATH` | `<cwd>/maven-db/maven.db` | Override database location. Set this to an absolute path so the DB does not move with your shell's working directory. |
 | `MAVEN_DEBUG` | unset | Set to enable debug logging |
+
+## Contributing
+
+Issues and PRs welcome at [adarshpandey-cs21/maven](https://github.com/adarshpandey-cs21/maven).
+
+```bash
+git clone https://github.com/adarshpandey-cs21/maven.git
+cd maven
+npm install
+npm run build
+npm run lint
+```
+
+Releases are automated: merge into the `release` branch and the
+[release workflow](.github/workflows/release.yml) bumps the version from the
+commit message (Conventional Commits), publishes to npm via trusted publishing,
+tags, and cuts a GitHub Release.
 
 ## License
 
-MIT
+[MIT](./LICENSE) © Adarsh Pandey

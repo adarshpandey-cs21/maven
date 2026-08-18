@@ -7,7 +7,7 @@ import { registerTools } from './tools.js';
 
 const server = new McpServer({
 	name: 'maven-mcp',
-	version: '1.0.0',
+	version: '0.1.0',
 });
 
 getDb();
